@@ -1,9 +1,12 @@
-const API_PREFIX = '/api';
+const API_PREFIX = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
 
 async function sendRequest(url, options) {
   try {
     return await fetch(url, options);
-  } catch {
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw error;
+    }
     throw new Error('Não foi possível conectar ao servidor.');
   }
 }
@@ -23,9 +26,12 @@ async function readJsonResponse(response) {
   return response.json();
 }
 
-export async function listDocuments() {
-  const response = await sendRequest(`${API_PREFIX}/documents`);
+export async function listDocuments(signal) {
+  const response = await sendRequest(`${API_PREFIX}/documents`, { signal });
   const payload = await readJsonResponse(response);
+  if (!Array.isArray(payload.documents)) {
+    throw new Error('Resposta inválida do servidor ao listar documentos.');
+  }
   return payload.documents;
 }
 
@@ -41,19 +47,9 @@ export async function uploadDocument(file) {
   return readJsonResponse(response);
 }
 
-export async function downloadDocument(id, filename) {
-  const response = await sendRequest(
-    `${API_PREFIX}/documents/${encodeURIComponent(id)}/download`,
-  );
-  if (!response.ok) {
-    await readJsonResponse(response);
-  }
-
-  const fileBlob = await response.blob();
-  const objectUrl = URL.createObjectURL(fileBlob);
+export function downloadDocument(id, filename) {
   const downloadLink = document.createElement('a');
-  downloadLink.href = objectUrl;
+  downloadLink.href = `${API_PREFIX}/documents/${encodeURIComponent(id)}/download`;
   downloadLink.download = filename;
   downloadLink.click();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }

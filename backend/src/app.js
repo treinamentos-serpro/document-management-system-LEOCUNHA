@@ -15,6 +15,7 @@ const documentsRoutes = require('./routes/documents.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '127.0.0.1';
 
 app.use(express.json());
 
@@ -32,19 +33,20 @@ app.use((error, req, res, next) => {
   }
 
   const status = Number.isInteger(error.status) ? error.status : 500;
-  const isInternalError = status >= 500;
+  const isPublicStorageLimit = error.code === 'STORAGE_QUOTA_EXCEEDED';
+  const hideInternalDetails = status >= 500 && !isPublicStorageLimit;
 
   res.status(status).json({
     error: {
-      code: isInternalError ? 'STORAGE_ERROR' : error.code || 'REQUEST_ERROR',
-      message: isInternalError ? 'Não foi possível processar a solicitação.' : error.message,
+      code: hideInternalDetails ? 'STORAGE_ERROR' : error.code || 'REQUEST_ERROR',
+      message: hideInternalDetails ? 'Não foi possível processar a solicitação.' : error.message,
     },
   });
 });
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`DMS backend ouvindo na porta ${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`DMS backend ouvindo em ${HOST}:${PORT}`);
   });
 }
 

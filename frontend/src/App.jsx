@@ -12,20 +12,20 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [downloadingId, setDownloadingId] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     let isActive = true;
+    const controller = new AbortController();
 
-    listDocuments()
+    listDocuments(controller.signal)
       .then((loadedDocuments) => {
         if (isActive) {
           setDocuments(loadedDocuments);
         }
       })
       .catch((error) => {
-        if (isActive) {
+        if (isActive && error.name !== 'AbortError') {
           setFeedback({ type: 'error', message: error.message });
         }
       })
@@ -37,6 +37,7 @@ export default function App() {
 
     return () => {
       isActive = false;
+      controller.abort();
     };
   }, []);
 
@@ -60,17 +61,14 @@ export default function App() {
     }
   }
 
-  async function handleDownload(document) {
-    setDownloadingId(document.id);
+  function handleDownload(document) {
     setFeedback(null);
 
     try {
-      await downloadDocument(document.id, document.originalName);
+      downloadDocument(document.id, document.originalName);
       setFeedback({ type: 'success', message: 'Download iniciado.' });
     } catch (error) {
       setFeedback({ type: 'error', message: error.message });
-    } finally {
-      setDownloadingId(null);
     }
   }
 
@@ -118,7 +116,6 @@ export default function App() {
           <section className="documents-section" aria-labelledby="documents-title">
             <DocumentList
               documents={documents}
-              downloadingId={downloadingId}
               isLoading={isLoading}
               onDownload={handleDownload}
               titleId="documents-title"

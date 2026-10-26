@@ -24,7 +24,6 @@ function getFileExtension(filename) {
 
 export default function DocumentList({
   documents,
-  downloadingId,
   isLoading,
   onDownload,
   titleId,
@@ -74,7 +73,6 @@ export default function DocumentList({
                 <span className="document-size">{formatFileSize(document.size)}</span>
                 <DownloadButton
                   document={document}
-                  isDownloading={downloadingId === document.id}
                   onDownload={onDownload}
                 />
               </li>

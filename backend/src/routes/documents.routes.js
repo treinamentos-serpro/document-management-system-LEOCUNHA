@@ -1,25 +1,12 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const path = require('node:path');
 const multer = require('multer');
 const express = require('express');
 const documentsController = require('../controllers/documents.controller');
+const uploadRateLimiter = require('../middleware/uploadRateLimiter');
+const { getStorageDirectory, getMaxFileSize } = require('../config/storage');
 
 const router = express.Router();
-const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-function getStorageDirectory() {
-  return path.resolve(
-    process.env.STORAGE_DIR || path.resolve(__dirname, '../../storage'),
-  );
-}
-
-function getMaxFileSize() {
-  const configuredSize = Number.parseInt(process.env.MAX_FILE_SIZE, 10);
-  return Number.isInteger(configuredSize) && configuredSize > 0
-    ? configuredSize
-    : DEFAULT_MAX_FILE_SIZE;
-}
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -33,12 +20,42 @@ const upload = multer({
       callback(null, crypto.randomUUID());
     },
   }),
-  limits: { fileSize: getMaxFileSize(), files: 1 },
+  limits: {
+    fileSize: getMaxFileSize(),
+    files: 1,
+    fields: 1,
+    parts: 2,
+    fieldNameSize: 100,
+  },
 });
 
 function handleUpload(req, res, next) {
   upload.single('file')(req, res, (error) => {
     if (!error) {
+      if (Object.keys(req.body || {}).length > 0) {
+        if (!req.file) {
+          return res.status(400).json({
+            error: {
+              code: 'INVALID_UPLOAD',
+              message: 'Não foi possível receber o arquivo enviado.',
+            },
+          });
+        }
+
+        return fs.unlink(req.file.path, (cleanupError) => {
+          if (cleanupError) {
+            return next(cleanupError);
+          }
+
+          return res.status(400).json({
+            error: {
+              code: 'INVALID_UPLOAD',
+              message: 'Não foi possível receber o arquivo enviado.',
+            },
+          });
+        });
+      }
+
       return next();
     }
 
@@ -58,7 +75,7 @@ function handleUpload(req, res, next) {
   });
 }
 
-router.post('/upload', handleUpload, documentsController.uploadDocument);
+router.post('/upload', uploadRateLimiter, handleUpload, documentsController.uploadDocument);
 router.get('/documents', documentsController.listDocuments);
 router.get('/documents/:id/download', documentsController.downloadDocument);
 
