@@ -11,6 +11,7 @@
 // usando multer com diskStorage. Não utilize provedores externos.
 
 const express = require('express');
+const documentsRoutes = require('./routes/documents.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +22,24 @@ app.use(express.json());
 // /documents/:id/download) serão implementadas durante o Passo 2.
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+app.use('/', documentsRoutes);
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  const status = Number.isInteger(error.status) ? error.status : 500;
+  const isInternalError = status >= 500;
+
+  res.status(status).json({
+    error: {
+      code: isInternalError ? 'STORAGE_ERROR' : error.code || 'REQUEST_ERROR',
+      message: isInternalError ? 'Não foi possível processar a solicitação.' : error.message,
+    },
+  });
 });
 
 if (require.main === module) {
