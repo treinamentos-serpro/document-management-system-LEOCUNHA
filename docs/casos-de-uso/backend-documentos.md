@@ -20,10 +20,11 @@ O backend não autentica usuários. Para operações de documentos, o dono é de
 - O backend está disponível.
 - A requisição usa `multipart/form-data` e envia o arquivo no campo `file`.
 - O diretório local configurado para armazenamento pode ser criado e escrito.
+- O cliente não excedeu o limite de uploads por minuto e há espaço dentro da quota configurada.
 
 **Fluxo principal:**
 1. O cliente envia `POST /upload` com um arquivo no campo `file`.
-2. A rota recebe um único arquivo com Multer `diskStorage` e limite padrão de 10 MiB, ajustável por `MAX_FILE_SIZE`.
+2. A rota aplica o limite de frequência por endereço IP e recebe um único arquivo com Multer `diskStorage`, limitado a 10 MiB por padrão (`MAX_FILE_SIZE`).
 3. O backend cria o diretório de armazenamento, se necessário, e grava o arquivo com um nome interno UUID.
 4. O serviço rejeita arquivos vazios; para arquivo válido, gera um identificador e registra os metadados em memória.
 5. O nome original é reduzido ao nome-base, tem caracteres de controle removidos e recebe o fallback `document` se ficar vazio. O MIME type inválido recebe `application/octet-stream`.
@@ -36,6 +37,8 @@ O backend não autentica usuários. Para operações de documentos, o dono é de
 - **A4 - Upload inválido:** erros de Multer diferentes de limite de tamanho, como campo inesperado ou arquivo adicional, respondem `400` com código `INVALID_UPLOAD`.
 - **A5 - Falha ao receber ou armazenar:** encaminhar o erro ao tratamento global e responder `500` com código `STORAGE_ERROR` e mensagem genérica.
 - **A6 - Falha ao registrar metadados:** tentar remover o arquivo local criado e propagar a falha para o tratamento global.
+- **A7 - Frequência excedida:** responder `429` com código `UPLOAD_RATE_LIMITED` e `Retry-After`.
+- **A8 - Quota total atingida:** remover o arquivo recém-recebido e responder `507` com código `STORAGE_QUOTA_EXCEEDED`.
 
 **Pós-condições:**
 - **Sucesso:** o arquivo fica no filesystem local e os metadados ficam em memória.
@@ -102,8 +105,12 @@ O backend não autentica usuários. Para operações de documentos, o dono é de
 
 - O envio aceita somente um arquivo no campo `file` por requisição.
 - O limite padrão do arquivo é 10 MiB; `MAX_FILE_SIZE` permite configurá-lo.
+- A quota total padrão é 1 GiB (`MAX_STORAGE_BYTES`) e o limite de frequência padrão é 30 uploads por minuto por IP (`MAX_UPLOADS_PER_MINUTE`).
+- Requisições multipart aceitam um arquivo e rejeitam campos textuais extras, arquivos adicionais e excesso de partes.
 - Arquivos são gravados no filesystem local com `multer.diskStorage`; o nome interno é gerado pelo backend e não deriva do nome informado pelo cliente.
+- O nome interno deve corresponder a UUID e o caminho resolvido deve permanecer dentro do diretório local.
 - `STORAGE_DIR` configura o diretório local; sem configuração, usa-se `backend/storage`.
+- `HOST` é `127.0.0.1` por padrão; exposição em outra interface deve ser explícita e protegida por autenticação externa, já que a aplicação não autentica usuários.
 - Os metadados (`id`, `originalName`, `size`, `mimeType`, `uploadedAt`, `owner` e nome interno) são mantidos em memória. Após reiniciar o processo, os metadados não são recuperados, mesmo que os arquivos permaneçam no disco.
 - O dono é definido pelo servidor via `DEFAULT_OWNER_ID`, com fallback para `default`. Não há autenticação nem identificação de dono por requisição.
 - Listagem e download filtram pelo dono atual; identificador inexistente ou não associado a esse dono resulta em `404`.

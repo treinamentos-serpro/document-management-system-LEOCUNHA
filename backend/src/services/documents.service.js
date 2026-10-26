@@ -1,6 +1,9 @@
 const crypto = require('node:crypto');
 const path = require('node:path');
 const documentsRepository = require('../repositories/documents.repository');
+const { getMaxStorageBytes } = require('../config/storage');
+
+let storageWriteQueue = Promise.resolve();
 
 function createError(status, code, message) {
   const error = new Error(message);
@@ -26,6 +29,25 @@ function getOwner() {
   return process.env.DEFAULT_OWNER_ID || 'default';
 }
 
+async function saveWithinStorageLimit(document) {
+  const previousWrite = storageWriteQueue;
+  let releaseWrite;
+  storageWriteQueue = new Promise((resolve) => {
+    releaseWrite = resolve;
+  });
+
+  await previousWrite;
+  try {
+    const storedBytes = await documentsRepository.getStoredBytes();
+    if (storedBytes > getMaxStorageBytes()) {
+      throw createError(507, 'STORAGE_QUOTA_EXCEEDED', 'O limite de armazenamento foi atingido.');
+    }
+    documentsRepository.save(document);
+  } finally {
+    releaseWrite();
+  }
+}
+
 async function createDocument(file) {
   if (!file || !file.filename) {
     throw createError(400, 'FILE_REQUIRED', 'Envie um arquivo no campo "file".');
@@ -47,7 +69,7 @@ async function createDocument(file) {
   };
 
   try {
-    documentsRepository.save(document);
+    await saveWithinStorageLimit(document);
   } catch (error) {
     await documentsRepository.deleteStoredFile(file.filename).catch(() => {});
     throw error;
