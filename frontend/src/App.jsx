@@ -51,7 +51,7 @@ export default function App() {
         uploadedDocument,
         ...currentDocuments.filter((document) => document.id !== uploadedDocument.id),
       ]);
-      setFeedback({ type: 'success', message: 'Arquivo enviado com sucesso.' });
+      setFeedback({ type: 'success', message: 'Arquivo enviado com sucesso!' });
       return true;
     } catch (error) {
       setFeedback({ type: 'error', message: error.message });
