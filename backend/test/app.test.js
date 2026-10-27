@@ -54,6 +54,12 @@ test('a API envia, lista e baixa documentos', async (t) => {
     }
   });
 
+  await t.test('a listagem começa vazia', async () => {
+    const response = await fetch(`${baseUrl}/documents`);
+    assert.strictEqual(response.status, 200);
+    assert.deepStrictEqual(await response.json(), { documents: [] });
+  });
+
   const missingFileResponse = await fetch(`${baseUrl}/upload`, {
     method: 'POST',
     body: new FormData(),
@@ -128,4 +134,46 @@ test('a API envia, lista e baixa documentos', async (t) => {
   const unknownDocumentResponse = await fetch(`${baseUrl}/documents/unknown/download`);
   assert.strictEqual(unknownDocumentResponse.status, 404);
   assert.strictEqual((await unknownDocumentResponse.json()).error.code, 'DOCUMENT_NOT_FOUND');
+
+  await t.test('upload e download preservam os bytes de um arquivo binário', async () => {
+    const content = Buffer.from([0x00, 0xff, 0x80, 0x0d, 0x0a, 0x41]);
+    const binaryFormData = new FormData();
+    binaryFormData.append(
+      'file',
+      new Blob([content], { type: 'application/octet-stream' }),
+      'arquivo.bin',
+    );
+    const response = await fetch(`${baseUrl}/upload`, {
+      method: 'POST',
+      body: binaryFormData,
+    });
+    assert.strictEqual(response.status, 201);
+    const document = await response.json();
+    assert.strictEqual(document.originalName, 'arquivo.bin');
+    assert.strictEqual(document.size, content.length);
+    assert.notStrictEqual(document.id, uploadedDocument.id);
+    assert.ok(!Object.hasOwn(document, 'storageName'));
+
+    const listingResponse = await fetch(`${baseUrl}/documents`);
+    assert.strictEqual(listingResponse.status, 200);
+    const { documents } = await listingResponse.json();
+    assert.strictEqual(documents.length, 2);
+    assert.deepStrictEqual(documents.find((item) => item.id === document.id), document);
+    assert.deepStrictEqual(
+      documents.find((item) => item.id === uploadedDocument.id),
+      uploadedDocument,
+    );
+
+    const binaryDownloadResponse = await fetch(`${baseUrl}/documents/${document.id}/download`);
+    assert.strictEqual(binaryDownloadResponse.status, 200);
+    assert.strictEqual(
+      binaryDownloadResponse.headers.get('content-type'),
+      'application/octet-stream',
+    );
+    assert.match(
+      binaryDownloadResponse.headers.get('content-disposition'),
+      /attachment;.*filename="arquivo\.bin"/,
+    );
+    assert.deepStrictEqual(Buffer.from(await binaryDownloadResponse.arrayBuffer()), content);
+  });
 });
